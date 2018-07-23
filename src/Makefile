@@ -10,32 +10,82 @@
 #*****************************************************************************
 
 #------------------------------------------------------------------------------
-# <Put a Description Here>
-#
+# Makefile for generating executable, output, map and assembler code 
+# from main.c and memory.c
+# 
+# Student: Pranav S. Deshpande
 # Use: make [TARGET] [PLATFORM-OVERRIDES]
 #
 # Build Targets:
-#      <Put a description of the supported targets here>
+#      build, compile-all, main.o, memory.o, main.asm, memory.asm, main.i, 
+#      memory.i, main.d, memory.d, c1m2.asm
 #
 # Platform Overrides:
-#      <Put a description of the supported Overrides here
+#      PLATFORM=HOST, PLATFORM=MSP432
 #
 #------------------------------------------------------------------------------
 include sources.mk
 
+.PHONY: build
+.PHONY: compile-all
+.PHONY: clean
+
 # Platform Overrides
-PLATFORM = 
+PLATFORM = HOST
+TARGET=c1m2.out
 
-# Architectures Specific Flags
-LINKER_FILE = 
-CPU = 
-ARCH = 
-SPECS = 
+ifeq ($(PLATFORM),HOST) # for PC
+	CC = gcc # compiler
+	CFLAGS = -Wall -Werror -g -O0 -std=c99 # compiler flags
+	CPPFLAGS = -MM -MT $*.d -MF $*.d -MD # preprocessor flags
+	LDFLAGS = $(INCLUDES) -Wl,-Map=c1m2.map # Linker flags 
+	OBJDUMP = objdump # objdump utility
+	SIZE = size # size
+	LINKER_FILE = # empty for host
+	ARCH = # Architecture empty for host
+	CPU = # CPU empty for host
+	SPECS = # Specs empty for host
+else # for uC
+	CC = arm-none-eabi-gcc # compiler
+	CFLAGS = -mcpu=$(CPU) -m$(ARCH) -march=armv7e-m -mfpu=fpv4-sp-d16 --specs=$(SPECS) -Wall -Werror -g -O0 -std=c99 # compiler flags
+	CPPFLAGS = -MM -MT $*.d -MF $*.d -MD # preprocessor flags	
+	LDFLAGS = -T$(LINKER_FILE) $(INCLUDES) -Wl,-Map=c1m2.map # Linker flags
+	OBJDUMP = arm-none-eabi-objdump #objdump utility
+	SIZE = arm-none-eabi-size # size
+	LINKER_FILE = ../msp432p401r.lds # Linker file
+	ARCH = thumb # Architecture
+	CPU=cortex-m4 # CPU 
+	SPECS = nosys.specs # Specs
+endif
 
-# Compiler Flags and Defines
-CC = 
-LD = 
-LDFLAGS = 
-CFLAGS = 
-CPPFLAGs = 
+# compile and link all
+build: compile-all main.d memory.d
+	$(CC) $(CFLAGS) $(LDFLAGS) main.o memory.o -o $(TARGET)
+	$(SIZE) $(TARGET)
+	
+# dependencies
+%.d:%.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $< -D$(PLATFORM)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $< -D$(PLATFORM)
 
+# executables
+%.o: %.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -c $< -o $(@) -D$(PLATFORM)
+
+# preprocessed files
+%.i: %.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -E $< -o $(@) -D$(PLATFORM)
+
+# assemblies
+%.asm: %.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -S $< -o $(@) -D$(PLATFORM)
+
+c1m2.asm: c1m2.out
+	$(OBJDUMP) -S $< > $(@)
+
+# compile all
+compile-all: memory.o main.o
+
+# clean: remove all unwanted files for fresh compilation	
+clean:
+	rm *.out *.o *.i *.asm *.map *.d -f
